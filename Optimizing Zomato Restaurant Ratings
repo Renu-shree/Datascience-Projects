@@ -1,0 +1,688 @@
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+#scaling, encoding
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, LabelEncoder
+
+from scipy.stats import chi2_contingency,kruskal 
+
+#model building
+import scipy.stats as stats
+import statsmodels.api as sma
+
+#train_test_split
+from sklearn.model_selection import train_test_split,GridSearchCV
+
+#algorithms
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier,AdaBoostClassifier,GradientBoostingClassifier,StackingClassifier
+#from xgboost import XGBClassifier
+from sklearn.ensemble import BaggingClassifier
+#performance matrix
+from sklearn.metrics import classification_report,confusion_matrix,accuracy_score,precision_score,recall_score,cohen_kappa_score,roc_auc_score,roc_curve
+
+#when imbalanced dataset
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
+
+#warnings
+import warnings
+warnings.filterwarnings('ignore')
+
+pd.set_option('display.max_columns', None)
+
+df= pd.read_csv(r'C:\Users\HP\Desktop\capstone searching\timings.csv')
+df.head(2)
+
+df.shape
+
+df.info()
+
+df.nunique()
+
+df.isnull().sum()
+
+df.isnull().sum()/len(df)*100
+
+#numerical statistical analysis
+df.describe().T 
+
+# categorical statistical analysis
+df.describe(exclude=np.number).T
+
+df.duplicated().sum()
+
+df.dtypes
+
+df.columns
+
+df.corr()
+
+df['rating'].value_counts().sort_index()/len(df)*100
+
+* df.drop('sno', axis=1, inplace=True) #check before & after dropping columns whether my dataset is having duplicated columns are not
+* df.duplicated().sum()
+
+df['rating']=df['rating'].replace({'NEW': np.nan, 'Nové':np.nan}) # making as nan values
+df['rating'].unique()
+
+# dropping nan values, because it wont give good result, we go with exsisting rating dataset
+df.dropna(subset=['rating'], how='any', inplace=True)
+
+df.shape
+
+### by checking Unnamed: 0.1 , Unnamed: 0 , sno 
+* nothing has duplicate values, so i can drop any of the column, due to all columns pretends to be indexing kind
+
+df=df.drop(['Unnamed: 0','sno'], axis=1)
+df.head(2)
+
+df=df.set_index('Unnamed: 0.1')
+
+# coordinates columns spliting
+df[['latitude','longitude']]= df['coordinates'].str.split(",",expand=True)
+
+df[['latitude','longitude']]= df[['latitude', 'longitude']].apply(pd.to_numeric)
+df.drop('coordinates',axis=1,inplace=True)
+
+df.head(2)
+
+
+
+# Numerical Columns Analysis
+
+# Numeric
+# checking statistical analysis
+for i in df.select_dtypes(include=np.number):
+    print(i)
+    print('Unique_Values:', df[i].nunique())
+    print('Data_Type:',df[i].dtype)
+    print('Range(min, max):', df[i].min(),',', df[i].max())
+    print('Mean , Median:', df[i].mean(),',', df[i].median())
+    print('skewness, kurtosis:', df[i].skew(), ',',df[i].kurt() )
+    print('Null Values:', df[i].isnull().sum()/len(df[i])*100,'%')
+    print('Sub_Classes_ValueCounts:',df[i].value_counts().sort_values(ascending=False)/len(df[i])*100)
+    print('-------------------------------------------------------------------------------------')
+
+#### there is no null values in numerical column, but outliers are present
+
+# Finding which city has hightest records
+
+city_names=df.city.value_counts().index
+city_val=df.city.value_counts().values
+plt.figure(figsize=( 20,15))
+sns.barplot(x=city_val,y=city_names)
+
+observation:Zomato maximum records or transaction are from Delhi NCR After that Mumbai and then Bengaluru
+
+# multivariate 
+
+sns.heatmap(df.corr(),annot=True)
+
+we can say that all the numerical columns were significantlly dependent on target variable
+
+df.corr()
+
+# Most popular restuarent names in Delhi NCR
+
+del_city=df[df['city']=='Delhi NCR']
+pltct=del_city[['name']].value_counts().head(10)
+pltct.plot(kind='bar')
+plt.xlabel('name')
+plt.ylabel('count')
+plt.show()
+
+# Count of Restaurants Offering Delivery-Only Services Across Different Cities
+
+plt.figure(figsize=(12,2))
+sns.countplot(x='city',hue='delivery_only',data=df)
+plt.xticks(rotation=90)
+plt.show()
+
+# Count of Restaurants with Table Reservation Services Across Different Cities
+
+plt.figure(figsize=(12,2))
+sns.countplot(x='city',hue='table_reservation',data=df)
+plt.xticks(rotation=90)
+plt.show()
+
+# Count of Restaurants Offering Online Ordering Services Across Different Cities
+
+plt.figure(figsize=(12,2))
+sns.countplot(x=df['city'],hue='online_order',data=df)
+plt.xticks(rotation=90)
+plt.show()
+
+for i in df.select_dtypes(include=np.number).columns:
+    #plt.subplot(4,2,t)
+    print(i)
+    plt.figure(figsize=(18,16))
+    sns.barplot(y=df[i],x=df['rating']) # for visualization we are plot on x-axis with our target variable
+    #t+=1
+    plt.show()
+
+### Outlier check
+
+# visualizing outliers in numeric data
+
+for i in df.select_dtypes(include=np.number):
+    print(i)
+    sns.boxplot(df[i])
+    plt.show()
+
+### Normality check on numerical columns
+
+# checking for normality using jarque_bera
+ 
+import scipy.stats
+from scipy.stats import jarque_bera
+
+for i in df.select_dtypes(include=np.number):
+    x=jarque_bera(df[i].dropna())
+    if x[1]>0.05:
+        print(i, '--','pvalue',x[1], '----------','not significant')
+    else:
+        print(i, '--', 'pvalue', x[1], 'significant')
+
+### statistical test on  numerical columns
+
+# statistical test on  numerical columns
+
+l_pvalue=[]
+for i in df.select_dtypes(include=np.number):
+    print(i)
+
+    contingency_table = pd.crosstab(df['rating'], df[i])
+
+    # Chi-squared test
+    chi2, p, _, _ = chi2_contingency(contingency_table)
+    l_pvalue.append(round(p,2))
+    print(f"Chi-squared statistic: {chi2}")
+    print(f"P-value: {p}")
+    if p < 0.05:
+        print("Reject the null hypothesis. There is a significant difference.")
+    else:
+        print("Fail to reject the null hypothesis. No significant difference.")
+    print("------------------------------------")
+    
+
+
+l_pvalue=[]
+for i in df.select_dtypes(exclude=np.number):
+    print(i)
+
+    contingency_table = pd.crosstab(df['rating'], df[i])
+
+    # Chi-squared test
+    chi2, p, _, _ = chi2_contingency(contingency_table)
+    l_pvalue.append(round(p,2))
+    print(f"Chi-squared statistic: {chi2}")
+    print(f"P-value: {p}")
+    if p < 0.05:
+        print("Reject the null hypothesis. There is a significant difference.")
+    else:
+        print("Fail to reject the null hypothesis. No significant difference.")
+    print("-----------------------------------")
+
+#### we can say that all the numerical columns were significantlly dependent on target variable
+
+# Categorical Columns Analysis
+
+# checking counts, unique subclasses in each column
+
+for i in df.select_dtypes(exclude=np.number):
+    print(i)
+    print('null values:', df[i].isnull().sum())
+    print('Unique_subclasses_total:', df[i].nunique())
+    print('Unique_subclasses:', df[i].unique())
+    print('-'*30)
+
+
+### there were null values for 3 columns
+* address
+* timings
+* famous_food
+
+To impute null values, im cross checking, whether that columns were significant or| not
+
+df.columns
+
+# checking statistical test for categorical column
+
+p_mat_n=[]
+for i in df.select_dtypes(exclude=np.number):
+    print(i)
+
+    contingency_table = pd.crosstab(df['rating'], df[i])
+
+    # Chi-squared test
+    chi2, p, _, _ = chi2_contingency(contingency_table)
+    p_mat_n.append(round(p,2))
+    print(f"Chi-squared statistic: {chi2}")
+    print(f"P-value: {p}")
+    if p < 0.05:
+        print("Reject the null hypothesis. There is a significant difference.")
+    else:
+        print("Fail to reject the null hypothesis. No significant difference.")
+    print("--------------------------------------------------------------------")
+    
+
+p_mat_n
+
+p_value_cat1=pd.DataFrame()
+p_value_cat1['Features']=df.select_dtypes(exclude=np.number).columns
+p_value_cat1['p_values']=p_mat_n
+
+p_value_cat1.sort_values(by='p_values',ascending=True)
+
+#### we can state that cat Vs cat there is a significant dependency on few column that were
+* city
+* area
+* telephone
+* cusine
+* timings
+* online_order
+* table_reservation
+* delivery_only
+
+chi2_contingency(pd.crosstab(df['address'], df['city']))[1] # showing significant with city
+
+chi2_contingency(pd.crosstab(df['address'], df['rating']))[1] # showing not significant with rating
+
+# Dropping "address" column, where address is similar to city & area, thus it is also not significant with target varibale
+
+df= df.drop('address', axis=1)
+
+df.head(2)
+
+# imputing null values for "timings" based on weightages
+
+weights = df['timings'].value_counts(normalize=True)
+
+null_indices = df['timings'].isnull()
+
+# Replace null values with weighted sampling
+df.loc[null_indices, 'timings'] = np.random.choice(weights.index, size=sum(null_indices), p=weights.values)
+
+df['timings'].isnull().sum()
+
+df.isnull().sum()
+
+#### Hence there are no null values
+
+if df['famous_food'].isnull().any():
+    df['famous_food'].fillna('no', inplace=True)
+
+df['famous_food'] = df['famous_food'].apply(lambda x: 'yes' if x != 'no' else 'no')
+
+
+df['famous_food'].unique()
+
+num= df.select_dtypes(include=np.number)
+cat= df.select_dtypes(exclude=np.number)
+
+num.columns
+
+# Treating Outliers
+
+# capping
+for i in num.columns:
+    q1=num[i].quantile(0.25)
+    q3=num[i].quantile(0.75)
+    iqr=q3-q1
+    ll=q1-1.5*iqr
+    ul=q3+1.5*iqr
+    num[i]=num[i].apply(lambda x:ll if x<ll else ul if x>ul else x)
+
+# visualizing after outlier treatement
+
+for i in num:
+    print(i)
+    sns.boxplot(num[i])
+    plt.show()
+
+num.shape
+
+# Encoding
+
+### before encoding 
+* 'zomato_url'
+* 'name' 
+* the above mentioned columns are having more unique classes & statistically not significant for the model, so we drop those columns
+
+cat=cat.drop(['zomato_url','name'], axis=1)
+cat.head(2)
+
+cat.shape
+
+# for encoding 
+cat_t= cat['rating']
+print(cat_t.head(2))
+print(cat_t.shape)
+
+# label encoding
+
+cat= cat.drop('rating', axis=1)
+cat.head(2)
+
+# label encoding apart from target column
+
+le=LabelEncoder()
+
+# Assuming cat is your DataFrame containing categorical columns
+for i in cat.columns:
+    cat[i] = le.fit_transform(cat[i])
+
+cat.columns
+
+cat.shape
+
+# Concat Num and Cat
+
+df1=pd.concat([num,cat, cat_t], axis=1)
+df1.head()
+
+df1.shape
+
+df1['rating'].value_counts()
+
+df1.isnull().sum()
+
+df1.duplicated().sum()
+
+df1.drop_duplicates(keep='first', inplace=True)
+
+df1.shape
+
+# Scaling
+
+# Scaling
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
+
+ss=StandardScaler()
+df_sc=ss.fit_transform(df1)
+df_sc=pd.DataFrame(df1,columns=df1.columns)
+df_sc.head(2)
+
+# Subdivided Ratings
+
+# Target variable
+
+df_sc['rating'] = pd.to_numeric(df_sc['rating'], errors='coerce')
+df_sc['rating'].dtype
+
+df_sc['rating'] = np.select(
+    [df_sc['rating'] > 3.5, (df_sc['rating'] >= 2) & (df_sc['rating'] <= 3.5), df_sc['rating'] < 2],
+    ['Good', 'Moderate', 'Poor'])
+
+sns.countplot(data=df_sc,x='rating')
+
+# Train Test Split
+
+x=df_sc.drop("rating",axis=1)
+y=df_sc[["rating"]]
+x_train,x_test,y_train,y_test=train_test_split(x,y,train_size=0.75,random_state=100)
+
+# Logistic Regression
+
+lr=LogisticRegression()
+model_lr=lr.fit(x_train,y_train)
+ypred=model_lr.predict(x_test)
+
+print(classification_report(y_test,ypred))
+print(cohen_kappa_score(y_test,ypred))
+
+accuracy_score(y_test,ypred)
+
+
+lr = LogisticRegression(multi_class='multinomial', solver='lbfgs', max_iter=1000, random_state=42)
+model_lrtrain=lr.fit(x_train,y_train)
+ypred_train=model_lrtrain.predict(x_train)
+accuracy_train=accuracy_score(y_train,ypred_train)
+print("accuracy of train:",accuracy_train)
+print(classification_report(y_train,ypred_train))
+
+# Decision Tree Classifier
+
+#test
+dt=DecisionTreeClassifier(criterion="gini",random_state=100) # with gini
+model_dt=dt.fit(x_train,y_train)
+ypred=model_dt.predict(x_test)
+
+print(classification_report(y_test,ypred))
+print(cohen_kappa_score(y_test,ypred))
+
+#train
+dt=DecisionTreeClassifier(criterion="gini",random_state=100) # with gini
+model_dt=dt.fit(x_train,y_train)
+ypred=model_dt.predict(x_train)
+print(classification_report(y_train,ypred))
+print(accuracy_score(y_train,ypred))
+
+#test
+dt=DecisionTreeClassifier(criterion="entropy",random_state=100) # with entropy
+model_dt=dt.fit(x_train,y_train)
+ypred=model_dt.predict(x_test)
+
+print(classification_report(y_test,ypred))
+print(cohen_kappa_score(y_test,ypred))
+
+#train
+dt=DecisionTreeClassifier(criterion="entropy",random_state=100) # with gini
+model_dt=dt.fit(x_train,y_train)
+ypred=model_dt.predict(x_train)
+print(classification_report(y_train,ypred))
+print(accuracy_score(y_train,ypred))
+
+model_dt.feature_importances_
+
+important_features = pd.DataFrame({'Features': x_train.columns, 
+                                   'Importance': model_dt.feature_importances_})
+
+# sort the dataframe in the descending order according to the feature importance
+important_features = important_features.sort_values('Importance', ascending = False)
+
+# create a barplot to visualize the features based on their importance
+sns.barplot(x = 'Importance', y = 'Features', data = important_features)
+
+important_features
+
+
+
+"In conclusion, the model demonstrates a good performance with an overall accuracy of 81%. It exhibits good precision, recall, and F1-score across the 'Good', 'Moderate', and 'Poor' classes, suggesting a balanced predictive capability. The weighted average metrics further support the model's effectiveness in handling imbalanced class distribution. However, the ultimate judgment on the model's suitability depends on the specific context and the trade-off between precision and recall required for the given application. Further fine-tuning or exploration of alternative models could be considered to optimize performance based on the unique requirements of the task at hand."
+
+### random forest model 
+
+rf=RandomForestClassifier()
+model_rf=rf.fit(x_train,y_train)
+ypred=model_rf.predict(x_test)
+
+print(classification_report(y_test,ypred))
+print(cohen_kappa_score(y_test,ypred))
+
+print(accuracy_score(y_test,ypred))
+
+#train data 
+rf=RandomForestClassifier(n_estimators=50)
+model_rf=rf.fit(x_train,y_train)
+ypred=model_rf.predict(x_train)
+print(classification_report(y_train,ypred))
+print(cohen_kappa_score(y_train,ypred))
+print(accuracy_score(y_train,ypred))
+
+model_rf.feature_importances_
+
+important_features = pd.DataFrame({'Features': x_train.columns,'Importance': model_rf.feature_importances_})
+# sort the dataframe in the descending order according to the feature importance
+important_features = important_features.sort_values('Importance', ascending = False)
+# create a barplot to visualize the features based on their importance
+sns.barplot(x = 'Importance', y = 'Features', data = important_features)
+
+# random forest tunned
+
+params = [{'criterion': ['entropy', 'gini'],
+            'n_estimators': [100],
+            'max_depth': [10, 15],
+            'max_features': ['sqrt', 'log2'],
+            'min_samples_split': [2, 8],
+            'min_samples_leaf': [5, 9],
+            'max_leaf_nodes': [8, 11]}]
+
+rf_model=RandomForestClassifier(criterion= 'entropy',
+        max_depth= 10,
+        max_features='sqrt',
+         max_leaf_nodes=8,
+         min_samples_leaf= 9,
+         min_samples_split= 2,
+         n_estimators= 100)
+rf_model.fit(x_train,y_train)
+
+y_pred=rf_model.predict(x_test)
+print(accuracy_score(y_test,y_pred))
+print(confusion_matrix(y_test,y_pred))
+print(classification_report(y_test,y_pred))
+
+rf_model.feature_importances_
+
+important_features = pd.DataFrame({'Features': x_train.columns,'Importance': rf_model.feature_importances_})
+important_features = important_features.sort_values('Importance', ascending = False)
+sns.barplot(x = 'Importance', y = 'Features', data = important_features)
+
+* In this model it is showing that 6 variables does not have any importance to model building so let us build model only with rating count,online_order,cost_for_two,table_reservation,longitude,latitude and telephone.
+
+# bagging classififer -dt
+
+#test
+dt=DecisionTreeClassifier(random_state=10)
+
+bc=BaggingClassifier(dt)
+bc.fit(x_train,y_train)
+ypred_bc=bc.predict(x_test)
+print(accuracy_score(y_test,ypred_bc))
+
+print(classification_report(y_test,ypred_bc))
+print(cohen_kappa_score(y_test,ypred_bc))
+
+#train
+dt=DecisionTreeClassifier(random_state=10)
+bc=BaggingClassifier(dt)
+bc.fit(x_train,y_train)
+ypred_bc=bc.predict(x_train)
+print("classification on train set")
+print(accuracy_score(y_train,ypred_bc))
+print(classification_report(y_train,ypred_bc))
+print(cohen_kappa_score(y_train,ypred_bc))
+
+# bagging tunned
+
+dt=DecisionTreeClassifier(random_state=10)
+bc=BaggingClassifier(dt,
+                    n_estimators=100,
+                    max_samples=0.80,
+                    max_features=1.0,
+                    warm_start=True,
+                    oob_score=False,
+                    n_jobs=-1)
+bc.fit(x_train,y_train)
+ypred_bc=bc.predict(x_test)
+print(accuracy_score(y_test,ypred_bc))
+
+print(cohen_kappa_score(y_test,ypred_bc))
+print(classification_report(y_test,ypred_bc))
+
+#train
+dt=DecisionTreeClassifier(random_state=10)
+bc=BaggingClassifier(dt,
+                    n_estimators=100,
+                    max_samples=0.80,
+                    max_features=1.0,
+                    warm_start=True,
+                    oob_score=False,
+                    n_jobs=-1)
+bc.fit(x_train,y_train)
+ypred_bc=bc.predict(x_train)
+print(accuracy_score(y_train,ypred_bc))
+print(cohen_kappa_score(y_train,ypred_bc))
+print(classification_report(y_train,ypred_bc))
+
+from sklearn.ensemble import BaggingClassifier
+from sklearn.neighbors import KNeighborsClassifier
+
+# bagging ckassifier - knn 
+
+knn=KNeighborsClassifier()
+
+bag_knn=BaggingClassifier(knn,random_state=10)
+bag_knn.fit(x_train,y_train)
+
+ypred_bag_knn=bag_knn.predict(x_test)
+print(accuracy_score(y_test,ypred_bag_knn))
+print(cohen_kappa_score(y_test,ypred_bag_knn))
+print(classification_report(y_test,ypred_bag_knn))
+
+# boosting - AdaBoost
+
+abcl=AdaBoostClassifier(random_state=10)   # adaboostclassifier-stump 
+abcl.fit(x_train,y_train)
+ypred_abcl=abcl.predict(x_test)
+print(accuracy_score(y_test,ypred_abcl))
+print(classification_report(y_test,ypred_abcl))
+
+print(cohen_kappa_score(y_test,ypred_abcl))
+
+# gradient boosting 
+
+gbcl=GradientBoostingClassifier(n_estimators=50,
+                                max_depth=3,
+                                random_state=10)   
+gbcl.fit(x_train,y_train)
+ypred_gbcl=gbcl.predict(x_test)
+print(classification_report(y_test,ypred_gbcl))
+print(accuracy_score(y_test,ypred_gbcl))
+
+
+print(cohen_kappa_score(y_test,ypred_gbcl))
+
+#train
+gbcl=GradientBoostingClassifier(n_estimators=50,
+                                max_depth=3,
+                                random_state=10)   
+gbcl.fit(x_train,y_train)
+ypred_gbcl=gbcl.predict(x_train)
+print(classification_report(y_train,ypred_gbcl))
+print(accuracy_score(y_train,ypred_gbcl))
+
+
+Our project aimed to empower restaurant owners with actionable insights derived from Zomato restaurant ratings data, focusing on features such as cuisine, cost for two, timings, area, online ordering, city, table reservation, and location to enhance their ratings and overall performance.
+
+Cuisine Variety and Quality:
+Data analysis revealed that offering diverse and authentic cuisines positively influences ratings. Restaurants should prioritize quality ingredients and culinary innovation to attract customers and improve ratings.
+
+Cost for Two:
+Our analysis indicated that customers value restaurants offering reasonable pricing while maintaining quality. Setting competitive prices can attract more customers and contribute to positive ratings.
+
+Timings and Location:
+Restaurants with convenient operating hours and strategic locations tend to receive higher ratings. Analyzing foot traffic data and customer preferences can help optimize operating hours and choose optimal locations.
+
+Area and City Analysis:
+Restaurants located in high-traffic areas and popular cities often receive better ratings. Understanding local demographics, cultural preferences, and dining trends can guide location selection and marketing strategies.
+
+Online Ordering and Table Reservation:
+Providing online ordering and table reservation services enhances customer convenience and satisfaction. Integrating user-friendly online platforms and reservation systems can streamline operations and improve ratings.
+
+Business Interpretation:
+Strategic Menu Planning: Our analysis underscores the importance of offering diverse and high-quality cuisines to appeal to a wide customer base. Restaurants should continuously innovate their menus based on customer preferences and market trends to maintain competitiveness and drive positive ratings.
+
+Value-based Pricing: Balancing pricing with value is critical for customer satisfaction. Restaurants should regularly review pricing strategies and adjust prices based on customer feedback, cost fluctuations, and market trends to ensure competitiveness and positive ratings.
+
+Optimized Operations: Aligning operating hours with customer demand and strategically selecting restaurant locations are key factors in improving ratings. Restaurants should leverage data analytics to optimize operations, enhance customer experiences, and drive positive ratings.
+
+Digital Engagement: Embracing online ordering platforms, table reservation services, and digital marketing channels can enhance customer engagement and loyalty. Restaurants should invest in user-friendly digital platforms and social media marketing strategies to expand their reach and improve ratings.
+
+In conclusion, leveraging data-driven insights from Zomato restaurant ratings can empower Indian hotel owners to optimize their operations, enhance customer experiences, and drive positive ratings. By prioritizing features such as cuisine variety, pricing, location, and digital engagement, restaurants can differentiate themselves in the competitive hospitality industry and foster long-term success.
